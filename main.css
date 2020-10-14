@@ -1,0 +1,48 @@
+body {
+    background-color: black;
+    font-family: 'Courier New', Courier, monospace;
+    color: cornsilk;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-content: center;
+}
+
+@keyframes linkHover {
+    0% {
+        font-size: larger;
+        font-weight: bold;
+    }
+    50% {
+        font-size: x-large;
+        font-weight: bolder;
+        color: green;
+    }
+    100% {
+        font-size: larger;
+        font-weight: bold;
+    }
+}
+
+h1 {
+    font-size: larger;
+    font-weight: bold;
+}
+
+h1:hover {
+ animation-name: linkHover;
+ animation-duration: 3s;
+ animation-timing-function: ease-in;
+ animation-iteration-count: infinite;
+}
+
+a {
+    text-decoration: none;
+    color: inherit;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: 3fr 1fr;
+}
+
