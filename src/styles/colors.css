@@ -1,0 +1,23 @@
+/*
+  Site colours: Helix's merionette as the base, with ashen's embers as accents
+  (palettes from helix-editor/helix runtime/themes/merionette.toml and ashen.toml).
+    --bg / --fg         ui.background / ui.text
+    --dim               secondary text (header, footer, legends)
+    --muted             dates and tags in lists
+    --border            panel borders
+    --panel             translucent panel fill over the shader
+    --focus / --on-focus  focused panel border, name, active mobile tab (and its text)
+    --sel               selected row in unfocused panels (ui.cursorline)
+    --sel-focus-*       selected row in the focused panel (ashen ui.menu.selected)
+    --title --meta --link --key --msg --pre   preview heading, meta line, links, key hints, messages, help text
+    --sh1 --sh2         two shader shades on top of --bg
+    --glow-a --glow-b   shader highlight colours
+*/
+:root {
+  --bg: #190f0f; --fg: #cebabf; --dim: #c79295; --muted: #c79295;
+  --border: #442022; --panel: rgb(25 15 15 / 0.72);
+  --focus: #e49a44; --on-focus: #121212;
+  --sel: #2c1617; --sel-focus-bg: #c4693d; --sel-focus-fg: #121212; --sel-focus-muted: #322119;
+  --title: #e5a72a; --meta: #4a8b8b; --link: #df6464; --key: #d2505f; --msg: #e49a44; --pre: #cebabf;
+  --sh1: #2c1617; --sh2: #331c1e; --glow-a: #704144; --glow-b: #6d3b22;
+}

@@ -1,0 +1,30 @@
+---
+interface Props {
+  title: string;
+  description: string;
+}
+import "../styles/colors.css";
+const { title, description } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#190f0f" />
+    <link rel="preload" href="/fonts/zed-mono-regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/fonts/zed-mono.css" />
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>
+
+<style is:global>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.55 "Zed Mono", ui-monospace, monospace; }
+  a { color: var(--link); }
+</style>

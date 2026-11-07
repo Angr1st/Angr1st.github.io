@@ -1,0 +1,172 @@
+---
+// Full-screen WebGL background: slow domain-warped noise, ordered-dithered into a few
+// theme shades at 1/3 resolution for a chunky terminal look. The pointer adds a glow;
+// clicks, taps and `bg:pulse` events (sent by keyboard navigation) start ripples.
+// Without WebGL nothing renders and the plain page background shows.
+---
+
+<canvas id="bg" aria-hidden="true"></canvas>
+
+<script>
+  const SCALE = 3; // CSS pixels per shader pixel
+  const MAX_RIPPLES = 4;
+
+  const frag = `
+    precision mediump float;
+    uniform vec2 uRes;
+    uniform float uTime;
+    uniform vec2 uMouse;
+    uniform float uMouseOn;
+    uniform vec3 uRipples[${MAX_RIPPLES}];
+    uniform vec3 uC0, uC1, uC2, uGlowA, uGlowB;
+
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float noise(vec2 p) {
+      vec2 i = floor(p), f = fract(p);
+      vec2 u = f * f * (3.0 - 2.0 * f);
+      return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
+    }
+    float fbm(vec2 p) {
+      float v = 0.0, a = 0.5;
+      for (int i = 0; i < 4; i++) { v += a * noise(p); p = p * 2.03 + 17.0; a *= 0.5; }
+      return v;
+    }
+    float bayer2(vec2 a) { a = floor(a); return fract(dot(a, vec2(0.5, a.y * 0.75))); }
+    float bayer4(vec2 a) { return bayer2(0.5 * a) * 0.25 + bayer2(a); }
+
+    void main() {
+      vec2 px = gl_FragCoord.xy;
+      vec2 uv = px / uRes.y;
+      float t = uTime * 0.05;
+
+      vec2 m = uMouse / uRes.y;
+      float d = distance(uv, m);
+      float hover = uMouseOn * exp(-d * d * 14.0);
+
+      vec2 q = vec2(fbm(uv * 1.6 + t), fbm(uv * 1.6 + vec2(5.2, 1.3) - t));
+      float f = fbm(uv * 1.6 + 2.2 * q + (uv - m) * hover * 0.8 + t * 0.6);
+
+      float rip = 0.0;
+      for (int i = 0; i < ${MAX_RIPPLES}; i++) {
+        vec3 r = uRipples[i];
+        float age = uTime - r.z;
+        if (age > 0.0 && age < 2.5) {
+          float dist = distance(uv, r.xy / uRes.y);
+          rip += exp(-pow((dist - age * 0.5) * 22.0, 2.0)) * (1.0 - age / 2.5);
+        }
+      }
+
+      float v = smoothstep(0.36, 0.82, f) + hover * 0.35 + rip * 0.6;
+      float level = clamp(floor(v * 3.0 + bayer4(px)), 0.0, 3.0);
+
+      vec3 accent = mix(uGlowA, uGlowB, q.x);
+      vec3 col = level < 1.0 ? uC0 : level < 2.0 ? uC1 : level < 3.0 ? uC2 : accent;
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `;
+
+  const vert = `attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }`;
+
+  const canvas = document.getElementById("bg") as HTMLCanvasElement;
+  const gl = canvas.getContext("webgl", { antialias: false, alpha: false });
+
+  if (gl) {
+    const compile = (type: number, src: string) => {
+      const s = gl.createShader(type)!;
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      return s;
+    };
+    const prog = gl.createProgram()!;
+    gl.attachShader(prog, compile(gl.VERTEX_SHADER, vert));
+    gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, frag));
+    gl.linkProgram(prog);
+
+    if (gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      gl.useProgram(prog);
+      gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(0);
+      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+      const u = (name: string) => gl.getUniformLocation(prog, name);
+      const uRes = u("uRes"), uTime = u("uTime"), uMouse = u("uMouse"), uMouseOn = u("uMouseOn"), uRipples = u("uRipples");
+      const ripples = new Float32Array(MAX_RIPPLES * 3).fill(-100);
+      let next = 0, mouseX = 0, mouseY = 0, mouseOn = 0, mouseTarget = 0;
+      const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const start = performance.now();
+      const now = () => (reduced ? 0 : (performance.now() - start) / 1000);
+
+      const toShader = (x: number, y: number) => [x / SCALE, (innerHeight - y) / SCALE];
+
+      // Colours come from the CSS variables in src/styles/colors.css.
+      const css = getComputedStyle(document.documentElement);
+      const rgb = (name: string) => {
+        const hex = css.getPropertyValue(name).trim().slice(1);
+        return [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) as [number, number, number];
+      };
+      gl.uniform3f(u("uC0"), ...rgb("--bg"));
+      gl.uniform3f(u("uC1"), ...rgb("--sh1"));
+      gl.uniform3f(u("uC2"), ...rgb("--sh2"));
+      gl.uniform3f(u("uGlowA"), ...rgb("--glow-a"));
+      gl.uniform3f(u("uGlowB"), ...rgb("--glow-b"));
+
+      const resize = () => {
+        canvas.width = Math.ceil(innerWidth / SCALE);
+        canvas.height = Math.ceil(innerHeight / SCALE);
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        if (reduced) draw();
+      };
+
+      const ripple = (x: number, y: number) => {
+        if (reduced) return;
+        const [sx, sy] = toShader(x, y);
+        ripples.set([sx, sy, now()], next * 3);
+        next = (next + 1) % MAX_RIPPLES;
+      };
+
+      function draw() {
+        gl!.uniform2f(uRes, canvas.width, canvas.height);
+        gl!.uniform1f(uTime, now());
+        gl!.uniform2f(uMouse, mouseX, mouseY);
+        gl!.uniform1f(uMouseOn, mouseOn);
+        gl!.uniform3fv(uRipples, ripples);
+        gl!.drawArrays(gl!.TRIANGLES, 0, 3);
+      }
+
+      function frame() {
+        mouseOn += (mouseTarget - mouseOn) * 0.08;
+        draw();
+        requestAnimationFrame(frame);
+      }
+
+      addEventListener("resize", resize);
+      addEventListener("pointermove", (e) => {
+        [mouseX, mouseY] = toShader(e.clientX, e.clientY);
+        mouseTarget = e.pointerType === "mouse" ? 1 : 0;
+        if (reduced) { mouseOn = mouseTarget; draw(); }
+      });
+      document.addEventListener("pointerleave", () => (mouseTarget = 0));
+      addEventListener("pointerdown", (e) => ripple(e.clientX, e.clientY));
+      addEventListener("bg:pulse", (e) => {
+        const { x, y } = (e as CustomEvent<{ x: number; y: number }>).detail;
+        ripple(x, y);
+      });
+
+      resize();
+      if (!reduced) requestAnimationFrame(frame);
+    }
+  }
+</script>
+
+<style>
+  canvas {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    width: 100vw;
+    height: 100vh;
+    image-rendering: pixelated;
+    pointer-events: none;
+  }
+</style>

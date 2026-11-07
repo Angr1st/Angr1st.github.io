@@ -1,0 +1,189 @@
+---
+import Base from "../layouts/Base.astro";
+import ShaderBackground from "../components/ShaderBackground.astro";
+import { me, sections } from "../data/site";
+---
+
+<Base title={`${me.name} · ${me.role}`} description={me.bio}>
+  <ShaderBackground />
+  <div class="app">
+    <header>
+      <h1 class="brand">● {me.handle}</h1>
+      <span class="dim">{me.role}</span>
+      <span class="right dim">{me.location} · <span id="clock">--:--:--</span></span>
+    </header>
+
+    <nav class="tabs" aria-label="Sections">
+      {sections.map((s, p) => <button type="button" data-tab={p} aria-current={p === 0 ? "true" : "false"}><span class="kbd">[{p + 1}] </span>{s.title}</button>)}
+    </nav>
+
+    <div class="side">
+      {sections.map((s, p) => (
+        <fieldset class:list={["panel", { focus: p === 0 }]}>
+          <legend>[{p + 1}] {s.title}</legend>
+          <ul>
+            {s.items.map((it, i) => (
+              <li class:list={{ sel: i === 0 }} data-p={p} data-i={i}><span>{it.label}</span><small>{it.tag}</small></li>
+            ))}
+          </ul>
+        </fieldset>
+      ))}
+    </div>
+
+    <fieldset class="panel main">
+      <legend id="pvt">{sections[0].title} › {sections[0].items[0].label}</legend>
+      <div aria-live="polite">
+        {sections.map((s, p) => s.items.map((it, i) => (
+          <article class="detail" data-p={p} data-i={i} hidden={!(p === 0 && i === 0)}>
+            <h2>{it.title}</h2>
+            <div class="meta">{it.meta}</div>
+            <hr />
+            <p>{it.body}</p>
+            {it.url && <p class="open"><span class="kbd">↵ enter · </span><a href={it.url}>open ↗</a></p>}
+          </article>
+        )))}
+        <article id="help" class="help" hidden>
+          <pre>{`  j / ↓        move down
+  k / ↑        move up
+  l / →        next panel
+  h / ←        previous panel
+  1 – ${sections.length}        jump to panel
+  enter        open link
+  ?            toggle this help
+
+  The mouse works too: click to select, click again to open.`}</pre>
+        </article>
+      </div>
+    </fieldset>
+
+    <footer>
+      <span class="kbd"><b>j/k</b> move</span><span class="kbd"><b>h/l</b> panel</span><span class="kbd"><b>1-{sections.length}</b> jump</span><span class="kbd"><b>enter</b> open</span><span class="kbd"><b>?</b> help</span>
+      <span class="touch">tap an item to preview it</span>
+      <span id="msg" class="msg"></span>
+    </footer>
+  </div>
+
+  <noscript><style is:inline>.detail[hidden] { display: block !important; } .side .panel { display: block !important; } .tabs, #pvt, #clock { display: none !important; }</style></noscript>
+
+  <script is:inline define:vars={{ sections, timeZone: me.timeZone }}>
+    const panels = [...document.querySelectorAll(".side .panel")];
+    const tabs = [...document.querySelectorAll("[data-tab]")];
+    const details = [...document.querySelectorAll(".detail")];
+    const helpEl = document.getElementById("help");
+    const pvt = document.getElementById("pvt");
+    const msg = document.getElementById("msg");
+    const n = sections.length;
+    const sel = sections.map(() => 0);
+    let fp = 0, help = false, timer;
+
+    function flash(s) {
+      msg.textContent = s;
+      clearTimeout(timer);
+      timer = setTimeout(() => (msg.textContent = ""), 2500);
+    }
+
+    function render() {
+      panels.forEach((el, p) => {
+        el.classList.toggle("focus", p === fp);
+        el.querySelectorAll("li").forEach((li, i) => li.classList.toggle("sel", i === sel[p]));
+      });
+      tabs.forEach((t, p) => t.setAttribute("aria-current", String(p === fp)));
+      details.forEach((d) => (d.hidden = help || +d.dataset.p !== fp || +d.dataset.i !== sel[fp]));
+      helpEl.hidden = !help;
+      pvt.textContent = help ? "Help" : `${sections[fp].title} › ${sections[fp].items[sel[fp]].label}`;
+    }
+
+    function open() {
+      const it = sections[fp].items[sel[fp]];
+      if (!it.url) return flash("nothing to open here");
+      if (it.url === "#") return flash("placeholder link, nothing to open yet");
+      location.href = it.url;
+    }
+
+    addEventListener("keydown", (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest("a, button, input, textarea")) return;
+      const k = e.key;
+      const len = sections[fp].items.length;
+      if (k === "j" || k === "ArrowDown") sel[fp] = (sel[fp] + 1) % len;
+      else if (k === "k" || k === "ArrowUp") sel[fp] = (sel[fp] - 1 + len) % len;
+      else if (k === "l" || k === "ArrowRight") fp = (fp + 1) % n;
+      else if (k === "h" || k === "ArrowLeft") fp = (fp - 1 + n) % n;
+      else if (/^[1-9]$/.test(k) && +k <= n) fp = +k - 1;
+      else if (k === "Enter") open();
+      else if (k !== "?") return;
+      help = k === "?" ? !help : false;
+      e.preventDefault();
+      render();
+      const li = panels[fp].querySelector("li.sel");
+      li?.scrollIntoView({ block: "nearest" });
+      const r = (help ? pvt : li)?.getBoundingClientRect();
+      if (r) dispatchEvent(new CustomEvent("bg:pulse", { detail: { x: r.left + r.width / 2, y: r.top + r.height / 2 } }));
+    });
+
+    document.addEventListener("click", (e) => {
+      const tab = e.target.closest("[data-tab]");
+      if (tab) { fp = +tab.dataset.tab; help = false; return render(); }
+      const li = e.target.closest("li[data-p]");
+      if (!li) return;
+      const p = +li.dataset.p, i = +li.dataset.i;
+      if (fp === p && sel[p] === i && !help) return open();
+      fp = p; sel[p] = i; help = false;
+      render();
+    });
+
+    const clock = document.getElementById("clock");
+    const tick = () => (clock.textContent = new Date().toLocaleTimeString("en-GB", { timeZone }));
+    tick();
+    setInterval(tick, 1000);
+  </script>
+</Base>
+
+<style>
+  .app { display: grid; grid-template-columns: minmax(20rem, 32%) 1fr; grid-template-rows: auto 1fr auto; gap: 0 0.9rem; height: 100vh; height: 100dvh; padding: 0.9rem 1.25rem; }
+  header, footer { text-shadow: 0 0 3px var(--bg), 0 0 6px var(--bg); }
+  header .dim { color: var(--dim); }
+  header { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 1rem; padding: 0 0.25rem 0.35rem; }
+  .brand { margin: 0; font-size: inherit; color: var(--focus); }
+  .dim { color: var(--muted); }
+  .right { margin-left: auto; }
+  .tabs { display: none; }
+  .side { display: flex; flex-direction: column; gap: 0.7rem; min-height: 0; }
+  fieldset { margin: 0; padding: 0.2rem 0.5rem 0.4rem; min-width: 0; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); }
+  .side fieldset { flex: 1 1 auto; }
+  legend { padding: 0 0.35rem; color: var(--dim); }
+  .panel.focus { border-color: var(--focus); }
+  .panel.focus legend { color: var(--focus); font-weight: 700; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { display: flex; justify-content: space-between; gap: 1rem; padding: 0 0.4rem; cursor: pointer; white-space: nowrap; }
+  li span { overflow: hidden; text-overflow: ellipsis; }
+  li small { font-size: inherit; color: var(--muted); }
+  li.sel { background: var(--sel); }
+  .focus li.sel { background: var(--sel-focus-bg); color: var(--sel-focus-fg); }
+  .focus li.sel small { color: var(--sel-focus-muted); }
+  .main { grid-row: 2; grid-column: 2; padding: 0.5rem 1.5rem; }
+  h2 { font-size: 2.75rem; line-height: 1.1; font-weight: 800; color: var(--title); margin: 0.75rem 0 0.25rem; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+  .meta { color: var(--meta); overflow-wrap: anywhere; }
+  hr { border: 0; border-top: 1px dashed var(--border); margin: 1rem 0; }
+  .detail p { max-width: 60ch; }
+  .open { color: var(--link); }
+  pre { font: inherit; color: var(--pre); white-space: pre-wrap; }
+  footer { grid-column: 1 / -1; display: flex; gap: 1.5rem; padding: 0.35rem 0.25rem 0; color: var(--dim); }
+  footer b { color: var(--key); font-weight: 400; }
+  .touch { display: none; }
+  .msg { margin-left: auto; color: var(--msg); }
+
+  @media (max-width: 760px) {
+    .app { display: flex; flex-direction: column; height: auto; min-height: 100dvh; padding: 0.75rem; }
+    .tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0.4rem; margin: 0.25rem 0 0.6rem; }
+    .tabs button { min-width: 0; font: inherit; color: var(--dim); background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 0.35rem 0.7rem; cursor: pointer; }
+    .tabs button[aria-current="true"] { color: var(--on-focus); background: var(--focus); border-color: var(--focus); font-weight: 700; }
+    .side .panel:not(.focus) { display: none; }
+    .side legend { display: none; }
+    .side li { padding: 0.55rem 0.5rem; }
+    .main { margin-top: 0.6rem; padding: 0.5rem 1rem 1rem; }
+    h2 { font-size: 2rem; }
+    .kbd { display: none; }
+    .touch { display: inline; }
+    footer { padding-top: 0.75rem; flex-wrap: wrap; }
+  }
+</style>
